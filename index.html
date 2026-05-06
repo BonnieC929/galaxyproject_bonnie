@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Morphing Galaxy Simulator</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #000; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+        canvas { display: block; }
+
+        #ui-container {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            max-width: 400px;
+            background: rgba(10, 15, 30, 0.7);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            pointer-events: auto;
+        }
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 28px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #ffffff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+        p {
+            margin: 0 0 20px 0;
+            font-size: 15px;
+            line-height: 1.5;
+            color: #cccccc;
+        }
+        button {
+            background: linear-gradient(45deg, #2255ff, #8822ff);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(34, 85, 255, 0.4);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(34, 85, 255, 0.6);
+        }
+        button:active {
+            transform: translateY(1px);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-container">
+        <h1 id="galaxy-name">Loading...</h1>
+        <p id="galaxy-desc">Initializing stellar data...</p>
+        <button id="change-btn">Change Galaxy Shape</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // scene setup
+        const canvas = document.createElement('canvas');
+        document.body.appendChild(canvas);
+        const scene = new THREE.Scene();
+        const sizes = { width: window.innerWidth, height: window.innerHeight };
+
+        const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100);
+        camera.position.set(0, 8, 14); 
+        scene.add(camera);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
+        renderer.setSize(sizes.width, sizes.height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+
+        // bloom post processing
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(sizes.width, sizes.height), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0.05; 
+        bloomPass.strength = 1.4; 
+        bloomPass.radius = 0.8;     
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // base parameters
+        const count = 80000; 
+        const baseRadius = 7;
+
+        const currentPositions = new Float32Array(count * 3);
+        const currentColors = new Float32Array(count * 3);
+        const targetPositions = new Float32Array(count * 3);
+        const targetColors = new Float32Array(count * 3);
+
+        // custom star texture
+        const createStarTexture = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32; canvas.height = 32;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 32, 32);
+            return new THREE.CanvasTexture(canvas);
+        };
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(currentPositions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(currentColors, 3));
+        
+        const material = new THREE.PointsMaterial({
+            size: 0.02, 
+            sizeAttenuation: true, 
+            depthWrite: false, 
+            blending: THREE.AdditiveBlending, 
+            vertexColors: true,
+            map: createStarTexture(), 
+            transparent: true      
+        });
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
+
+        const lerpColor = (color1, color2, alpha) => {
+            const c1 = new THREE.Color(color1);
+            const c2 = new THREE.Color(color2);
+            return c1.lerp(c2, Math.min(alpha, 1));
+        };
+
+        // the galaxy dictionary
+        const galaxyTypes = [
+            // spiral galaxy
+            {
+                name: "Spiral Galaxy",
+                desc: "Classic swirling arms of young, blue stars wrapped around a dense, older yellow core. Dust lanes keep the structure clearly defined.",
+                generate: () => {
+                    const cIn = '#ffccaa'; const cOut = '#2255ff';
+                    for(let i=0; i<count; i++) {
+                        let r = Math.pow(Math.random(), 1.5) * baseRadius;
+                        if (Math.random() > 0.95) r += Math.random() * 2; 
+                        const branchAngle = (i % 3) / 3 * Math.PI * 2;
+                        const spinAngle = r * 1.2;
+                        
+                        const noiseX = Math.pow(Math.random(), 2.5) * (Math.random() < 0.5 ? 1 : -1) * 0.3 * r;
+                        const noiseY = Math.pow(Math.random(), 2.5) * (Math.random() < 0.5 ? 1 : -1) * 0.3 * r;
+                        const noiseZ = Math.pow(Math.random(), 2.5) * (Math.random() < 0.5 ? 1 : -1) * 0.3 * r;
+
+                        targetPositions[i*3] = Math.cos(branchAngle + spinAngle) * r + noiseX;
+                        targetPositions[i*3+1] = noiseY * 0.5; 
+                        targetPositions[i*3+2] = Math.sin(branchAngle + spinAngle) * r + noiseZ;
+
+                        const col = lerpColor(cIn, cOut, r / baseRadius);
+                        targetColors[i*3] = col.r; targetColors[i*3+1] = col.g; targetColors[i*3+2] = col.b;
+                    }
+                }
+            },
+            // barred spiral galaxy
+            {
+                name: "Barred Spiral Galaxy",
+                desc: "Features a glowing central 'bar' of stars. The spiral arms sweep cleanly outwards from the ends of this bar. (Our Milky Way is one!)",
+                generate: () => {
+                    const cIn = '#ffddaa'; const cOut = '#2266ff';
+                    const barLength = baseRadius * 0.18; 
+
+                    for(let i=0; i<count; i++) {
+                        let x, y, z, r;
+                        if (Math.random() < 0.15) {
+                            x = (Math.random() - 0.5) * 2 * barLength;
+                            const thickness = Math.sqrt(1 - Math.pow(x / barLength, 2)) * 0.4;
+                            y = (Math.random() - 0.5) * thickness; 
+                            z = (Math.random() - 0.5) * thickness;
+                            r = Math.abs(x); 
+                        } else {
+                            r = barLength + Math.pow(Math.random(), 1.5) * (baseRadius - barLength);
+                            if (Math.random() > 0.95) r += Math.random() * 2;
+                            
+                            const branchAngle = (i % 2) * Math.PI; 
+                            const spinAngle = (r - barLength) * 1.8; 
+                            
+                            const noiseX = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.15 * r;
+                            const noiseY = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.1 * r;
+                            const noiseZ = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.15 * r;
+                            
+                            x = Math.cos(branchAngle + spinAngle) * r + noiseX;
+                            y = noiseY;
+                            z = Math.sin(branchAngle + spinAngle) * r + noiseZ;
+                        }
+
+                        targetPositions[i*3] = x; targetPositions[i*3+1] = y; targetPositions[i*3+2] = z;
+                        const col = lerpColor(cIn, cOut, r / baseRadius);
+                        targetColors[i*3] = col.r; targetColors[i*3+1] = col.g; targetColors[i*3+2] = col.b;
+                    }
+                }
+            },
+            // mice galaxies interacting spirals
+            {
+                name: "Mice Galaxies (Interacting Spirals)",
+                desc: "Two distinct spiral galaxies caught in a gravitational dance. You can clearly see their individual spiral arms being ripped outwards to form massive tidal tails.",
+                generate: () => {
+                    const cCore = '#ffddaa';
+                    const cBlue = '#2266ff';
+                    const cTail = '#4488ff';
+
+                    const cA = { x: 2.0, y: 0.5, z: 1.0 };
+                    const cB = { x: -1.5, y: -0.5, z: -1.0 };
+
+                    for(let i=0; i<count; i++) {
+                        let x, y, z, col;
+                        const rand = Math.random();
+
+                        if (rand < 0.40) {
+                            // galaxy a actual spiral
+                            let r = Math.pow(Math.random(), 1.5) * (baseRadius * 0.6);
+                            let branch = (i % 2) * Math.PI; 
+                            let spin = r * 2.0;
+                            
+                            let noiseX = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.2 * r;
+                            let noiseY = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.2 * r;
+                            let noiseZ = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.2 * r;
+
+                            x = cA.x + Math.cos(branch + spin) * r + noiseX;
+                            y = cA.y + noiseY;
+                            z = cA.z + Math.sin(branch + spin) * r + noiseZ;
+                            
+                            col = lerpColor(cCore, cBlue, r / (baseRadius * 0.6));
+                        } else if (rand < 0.50) {
+                            // galaxy a straight tail ripped from an arm
+                            let t = Math.pow(Math.random(), 1.5);
+                            let r = t * baseRadius * 1.5;
+                            let spread = t * 0.3 + 0.1;
+                            
+                            x = cA.x + r * 0.8 + (Math.random() - 0.5) * spread;
+                            y = cA.y + r * 0.3 + (Math.random() - 0.5) * spread;
+                            z = cA.z + r * 0.6 + (Math.random() - 0.5) * spread;
+                            
+                            col = new THREE.Color(cTail);
+                        } else if (rand < 0.90) {
+                            // galaxy b actual spiral
+                            let r = Math.pow(Math.random(), 1.5) * (baseRadius * 0.5);
+                            let branch = (i % 2) * Math.PI; 
+                            let spin = r * -2.5; 
+                            
+                            let noiseX = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.2 * r;
+                            let noiseY = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.2 * r;
+                            let noiseZ = Math.pow(Math.random(), 2) * (Math.random() < 0.5 ? 1 : -1) * 0.2 * r;
+
+                            x = cB.x + Math.cos(branch + spin) * r + noiseX;
+                            y = cB.y + noiseY;
+                            z = cB.z + Math.sin(branch + spin) * r + noiseZ;
+                            
+                            col = lerpColor(cCore, cBlue, r / (baseRadius * 0.5));
+                        } else {
+                            // galaxy b curved sweeping tail ripped from its arm
+                            let t = Math.pow(Math.random(), 1.5);
+                            let r = baseRadius * 0.3 + t * baseRadius * 1.4;
+                            let angle = Math.PI + t * 1.5; 
+                            let spread = t * 0.4 + 0.1;
+                            
+                            x = cB.x + Math.cos(angle) * r + (Math.random() - 0.5) * spread;
+                            y = cB.y - t * baseRadius * 0.4 + (Math.random() - 0.5) * spread;
+                            z = cB.z + Math.sin(angle) * r + (Math.random() - 0.5) * spread;
+                            
+                            col = new THREE.Color(cTail);
+                        }
+
+                        targetPositions[i*3] = x; targetPositions[i*3+1] = y; targetPositions[i*3+2] = z;
+                        targetColors[i*3] = col.r; targetColors[i*3+1] = col.g; targetColors[i*3+2] = col.b;
+                    }
+                }
+            },
+            // irregular galaxy
+            {
+                name: "Irregular Galaxy",
+                desc: "A diffuse, hazy, amorphous cloud of stars. It lacks a distinct core or arms, resembling a soft, glowing blob with scattered faint blue patches.",
+                generate: () => {
+                    const cBase = '#ffddbb'; 
+                    const cCluster = '#88bbff'; 
+                    
+                    const centers = [
+                        {x: 0, y: 0, z: 0, w: 1.5},
+                        {x: 1.5, y: 0.5, z: -1.0, w: 1.0},
+                        {x: -1.2, y: -0.4, z: 1.2, w: 0.8}
+                    ];
+
+                    for(let i=0; i<count; i++) {
+                        const c = centers[Math.floor(Math.random() * centers.length)];
+                        
+                        const r = Math.pow(Math.random(), 1.5) * baseRadius * c.w;
+                        const theta = Math.random() * Math.PI * 2;
+                        const phi = Math.acos((Math.random() * 2) - 1);
+                        
+                        targetPositions[i*3] = c.x + r * Math.sin(phi) * Math.cos(theta);
+                        targetPositions[i*3+1] = c.y + r * Math.sin(phi) * Math.sin(theta) * 0.8; 
+                        targetPositions[i*3+2] = c.z + r * Math.cos(phi);
+
+                        let col = new THREE.Color(cBase);
+                        
+                        if (Math.random() > 0.88) {
+                            col = new THREE.Color(cCluster);
+                        }
+                        
+                        col.lerp(new THREE.Color('#000000'), r / (baseRadius * 1.5));
+
+                        targetColors[i*3] = col.r; targetColors[i*3+1] = col.g; targetColors[i*3+2] = col.b;
+                    }
+                }
+            },
+            // elliptical galaxy
+            {
+                name: "Elliptical Galaxy",
+                desc: "A smooth, featureless 3D egg shape made almost entirely of older, cooler stars. Devoid of the gas needed to form new blue stars.",
+                generate: () => {
+                    const cIn = '#ffaa66'; const cOut = '#cc4422'; 
+                    for(let i=0; i<count; i++) {
+                        const r = Math.pow(Math.random(), 2) * baseRadius * 0.8;
+                        const theta = Math.random() * Math.PI * 2;
+                        const phi = Math.acos((Math.random() * 2) - 1);
+
+                        targetPositions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+                        targetPositions[i*3+1] = r * Math.sin(phi) * Math.sin(theta) * 0.6; 
+                        targetPositions[i*3+2] = r * Math.cos(phi);
+
+                        const col = lerpColor(cIn, cOut, r / baseRadius);
+                        targetColors[i*3] = col.r; targetColors[i*3+1] = col.g; targetColors[i*3+2] = col.b;
+                    }
+                }
+            },
+            // ring galaxy
+            {
+                name: "Ring Galaxy",
+                desc: "A highly unusual shape featuring a massive, bright ring of young stars encircling an older, relatively empty galactic core.",
+                generate: () => {
+                    const cIn = '#ffcc77'; const cOut = '#00ddff';
+                    for(let i=0; i<count; i++) {
+                        let r, col;
+                        const angle = Math.random() * Math.PI * 2;
+                        
+                        if (Math.random() > 0.15) {
+                            r = (baseRadius * 0.7) + ((Math.random() - 0.5) * 1.5);
+                            col = new THREE.Color(cOut); 
+                        } else {
+                            r = Math.pow(Math.random(), 2) * (baseRadius * 0.2);
+                            col = new THREE.Color(cIn); 
+                        }
+
+                        targetPositions[i*3] = Math.cos(angle) * r;
+                        targetPositions[i*3+1] = (Math.random() - 0.5) * 0.5; 
+                        targetPositions[i*3+2] = Math.sin(angle) * r;
+
+                        targetColors[i*3] = col.r; targetColors[i*3+1] = col.g; targetColors[i*3+2] = col.b;
+                    }
+                }
+            },
+            // lenticular galaxy
+            {
+                name: "Lenticular Galaxy",
+                desc: "A transition state between a Spiral and an Elliptical. It has a flat disk and a central bulge, but has lost all its spiral arms.",
+                generate: () => {
+                    const cIn = '#ffffff'; const cOut = '#dd6622';
+                    for(let i=0; i<count; i++) {
+                        const r = Math.pow(Math.random(), 2) * baseRadius;
+                        const angle = Math.random() * Math.PI * 2; 
+                        
+                        targetPositions[i*3] = Math.cos(angle) * r;
+                        targetPositions[i*3+1] = (Math.random() - 0.5) * (1 - (r/baseRadius)) * 1.5; 
+                        targetPositions[i*3+2] = Math.sin(angle) * r;
+
+                        const col = lerpColor(cIn, cOut, r / baseRadius);
+                        targetColors[i*3] = col.r; targetColors[i*3+1] = col.g; targetColors[i*3+2] = col.b;
+                    }
+                }
+            }
+        ];
+
+        // handle state and morphing
+        let currentTypeIndex = 0;
+        
+        const applyGalaxyShape = (index) => {
+            const type = galaxyTypes[index];
+            
+            document.getElementById('galaxy-name').innerText = type.name;
+            document.getElementById('galaxy-desc').innerText = type.desc;
+
+            type.generate();
+
+            if (index === 0 && currentPositions[0] === 0 && currentPositions[1] === 0) {
+                for(let i = 0; i < count * 3; i++) {
+                    currentPositions[i] = targetPositions[i];
+                    currentColors[i] = targetColors[i];
+                }
+                geometry.attributes.position.needsUpdate = true;
+                geometry.attributes.color.needsUpdate = true;
+            }
+        };
+
+        applyGalaxyShape(0);
+
+        document.getElementById('change-btn').addEventListener('click', () => {
+            currentTypeIndex++;
+            if(currentTypeIndex >= galaxyTypes.length) currentTypeIndex = 0;
+            applyGalaxyShape(currentTypeIndex);
+        });
+
+        // animation loop
+        window.addEventListener('resize', () => {
+            sizes.width = window.innerWidth; sizes.height = window.innerHeight;
+            camera.aspect = sizes.width / sizes.height; camera.updateProjectionMatrix();
+            renderer.setSize(sizes.width, sizes.height);
+            composer.setSize(sizes.width, sizes.height);
+        });
+
+        const clock = new THREE.Clock();
+        
+        const tick = () => {
+            const elapsedTime = clock.getElapsedTime();
+
+            if (points) points.rotation.y = elapsedTime * 0.05;
+            
+            let needsUpdate = false;
+            for(let i = 0; i < count * 3; i++) {
+                const pDiff = targetPositions[i] - currentPositions[i];
+                if (Math.abs(pDiff) > 0.001) {
+                    currentPositions[i] += pDiff * 0.04; 
+                    needsUpdate = true;
+                }
+                
+                const cDiff = targetColors[i] - currentColors[i];
+                if (Math.abs(cDiff) > 0.001) {
+                    currentColors[i] += cDiff * 0.04;
+                }
+            }
+
+            if (needsUpdate) {
+                geometry.attributes.position.needsUpdate = true;
+                geometry.attributes.color.needsUpdate = true;
+            }
+
+            controls.update();
+            composer.render(); 
+            window.requestAnimationFrame(tick);
+        };
+        tick();
+    </script>
+</body>
+</html>
