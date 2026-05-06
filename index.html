@@ -34,12 +34,6 @@
             color: #ffffff;
             text-shadow: 0 0 10px rgba(255,255,255,0.5);
         }
-        p {
-            margin: 0 0 20px 0;
-            font-size: 15px;
-            line-height: 1.5;
-            color: #cccccc;
-        }
         button {
             background: linear-gradient(45deg, #2255ff, #8822ff);
             border: none;
@@ -65,7 +59,6 @@
 
     <div id="ui-container">
         <h1 id="galaxy-name">Loading...</h1>
-        <p id="galaxy-desc">Initializing stellar data...</p>
         <button id="change-btn">Change Galaxy Shape</button>
     </div>
 
@@ -162,7 +155,6 @@
             // spiral galaxy
             {
                 name: "Spiral Galaxy",
-                desc: "Classic swirling arms of young, blue stars wrapped around a dense, older yellow core. Dust lanes keep the structure clearly defined.",
                 generate: () => {
                     const cIn = '#ffccaa'; const cOut = '#2255ff';
                     for(let i=0; i<count; i++) {
@@ -187,7 +179,6 @@
             // barred spiral galaxy
             {
                 name: "Barred Spiral Galaxy",
-                desc: "Features a glowing central 'bar' of stars. The spiral arms sweep cleanly outwards from the ends of this bar. (Our Milky Way is one!)",
                 generate: () => {
                     const cIn = '#ffddaa'; const cOut = '#2266ff';
                     const barLength = baseRadius * 0.18; 
@@ -225,7 +216,6 @@
             // mice galaxies interacting spirals
             {
                 name: "Mice Galaxies (Interacting Spirals)",
-                desc: "Two distinct spiral galaxies caught in a gravitational dance. You can clearly see their individual spiral arms being ripped outwards to form massive tidal tails.",
                 generate: () => {
                     const cCore = '#ffddaa';
                     const cBlue = '#2266ff';
@@ -301,7 +291,6 @@
             // irregular galaxy
             {
                 name: "Irregular Galaxy",
-                desc: "A diffuse, hazy, amorphous cloud of stars. It lacks a distinct core or arms, resembling a soft, glowing blob with scattered faint blue patches.",
                 generate: () => {
                     const cBase = '#ffddbb'; 
                     const cCluster = '#88bbff'; 
@@ -338,7 +327,6 @@
             // elliptical galaxy
             {
                 name: "Elliptical Galaxy",
-                desc: "A smooth, featureless 3D egg shape made almost entirely of older, cooler stars. Devoid of the gas needed to form new blue stars.",
                 generate: () => {
                     const cIn = '#ffaa66'; const cOut = '#cc4422'; 
                     for(let i=0; i<count; i++) {
@@ -358,7 +346,6 @@
             // ring galaxy
             {
                 name: "Ring Galaxy",
-                desc: "A highly unusual shape featuring a massive, bright ring of young stars encircling an older, relatively empty galactic core.",
                 generate: () => {
                     const cIn = '#ffcc77'; const cOut = '#00ddff';
                     for(let i=0; i<count; i++) {
@@ -384,7 +371,6 @@
             // lenticular galaxy
             {
                 name: "Lenticular Galaxy",
-                desc: "A transition state between a Spiral and an Elliptical. It has a flat disk and a central bulge, but has lost all its spiral arms.",
                 generate: () => {
                     const cIn = '#ffffff'; const cOut = '#dd6622';
                     for(let i=0; i<count; i++) {
@@ -409,7 +395,6 @@
             const type = galaxyTypes[index];
             
             document.getElementById('galaxy-name').innerText = type.name;
-            document.getElementById('galaxy-desc').innerText = type.desc;
 
             type.generate();
 
